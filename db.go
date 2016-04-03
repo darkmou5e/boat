@@ -8,8 +8,10 @@ import (
 
 var DB *sql.DB
 
-func Open(connectionParams string) (*sql.DB, error) {
-	DB, err := sql.Open("postgres", connectionParams) // Boat uses Postgres only.
+// connectionURL like "postgres://pqgotest:password@localhost/pqgotest?sslmode=verify-full"
+// Boat uses Postgres only.
+func Open(connectionURL string) (*sql.DB, error) {
+	DB, err := sql.Open("postgres", connectionURL)
 	if err != nil {
 		return nil, err
 	}
