@@ -49,7 +49,6 @@ func EnsureGINIndex(tableName string, tx *sql.Tx) error {
 	return nil
 }
 
-// EnsureTenant ...
 func EnsureTenant(tenant *Tenant, tenantInit func(tx *sql.Tx) error, db *sql.DB) error {
 	if tenant.Subdomain == "master" {
 		return errors.New(`Tenant name "master" is not allowed.`)
@@ -69,43 +68,33 @@ func EnsureTenant(tenant *Tenant, tenantInit func(tx *sql.Tx) error, db *sql.DB)
 	}()
 
 	err = EnsureSchema(tenant.Subdomain, tx)
-
 	if err != nil {
-		fmt.Println("here")
 		return err
 	}
 
 	tx, err = Use("master", tx)
-
 	if err != nil {
-		fmt.Println("here 2")
 		return err
 	}
 
 	t, err := json.Marshal(tenant)
 	if err != nil {
-		fmt.Println("here 3")
 		return err
 	}
 
 	_, err = tx.Exec(`INSERT INTO tenants (doc) VALUES ($1)`, t)
-
 	if err != nil {
-		fmt.Println("here 4")
 		fmt.Println(string(t))
 		return err
 	}
 
 	tx, err = Use(tenant.Subdomain, tx)
 	if err != nil {
-		fmt.Println("here 5")
 		return err
 	}
 
 	err = tenantInit(tx)
-
 	if err != nil {
-		fmt.Println("here 5")
 		return err
 	}
 
