@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
 )
 
 // Tenant is data struct for doc in master table.
@@ -54,25 +53,12 @@ func Bootstrap(db *sql.DB) error {
 	return nil
 }
 
-func EnsureTenant(tenant *Tenant, tenantInit func(tx *sql.Tx) error, db *sql.DB) error {
+func EnsureTenant(tenant *Tenant, tenantInit func(tx *sql.Tx) error, tx *sql.Tx) error {
 	if tenant.Subdomain == "master" {
 		return errors.New(`Tenant name "master" is not allowed.`)
 	}
 
-	tx, err := db.Begin()
-	if err != nil {
-		return err
-	}
-
-	defer func() {
-		if err != nil {
-			tx.Rollback()
-			return
-		}
-		tx.Commit()
-	}()
-
-	err = EnsureSchema(tenant.Subdomain, tx)
+	err := EnsureSchema(tenant.Subdomain, tx)
 	if err != nil {
 		return err
 	}
@@ -89,7 +75,6 @@ func EnsureTenant(tenant *Tenant, tenantInit func(tx *sql.Tx) error, db *sql.DB)
 
 	_, err = tx.Exec(`INSERT INTO tenants (doc) VALUES ($1)`, t)
 	if err != nil {
-		fmt.Println(string(t))
 		return err
 	}
 
