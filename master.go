@@ -2,15 +2,31 @@ package boat
 
 import (
 	"database/sql"
-	"encoding/json"
 	"errors"
 )
 
 // Tenant is data struct for doc in master table.
 type Tenant struct {
-	Name      string
-	Subdomain string
-	Active    bool
+	Name   string
+	Active bool
+	Aux    interface{} // For any useful auxilary data.
+}
+
+const MASTER = -1
+
+func Use(tenantID int, tx *sql.Tx) (*sql.Tx, error) {
+	var schemaName string
+	if tenantID == MASTER {
+		schemaName = "Master"
+	} else {
+		schemaName = "Tenant" + string(tenantID)
+	}
+
+	_, err := tx.Exec("SET search_path = " + schemaName)
+	if err != nil {
+		return nil, err
+	}
+	return tx, nil
 }
 
 func Bootstrap(db *sql.DB) error {
@@ -28,24 +44,24 @@ func Bootstrap(db *sql.DB) error {
 		tx.Commit()
 	}()
 
-	err = EnsureSchema("master", tx)
+	err = EnsureSchema("Master", tx)
 
 	if err != nil {
 		return err
 	}
 
-	tx, err = Use("master", tx)
+	tx, err = Use(MASTER, tx)
 
 	if err != nil {
 		return err
 	}
 
-	err = EnsureCollection("tenants", tx)
+	err = EnsureCollection("Tenants", tx)
 	if err != nil {
 		return err
 	}
 
-	err = EnsureGINIndex("tenants", tx)
+	err = EnsureGINIndex("Tenants", tx)
 	if err != nil {
 		return err
 	}
@@ -54,31 +70,27 @@ func Bootstrap(db *sql.DB) error {
 }
 
 func EnsureTenant(tenant *Tenant, tenantInit func(tx *sql.Tx) error, tx *sql.Tx) error {
-	if tenant.Subdomain == "master" {
-		return errors.New(`Tenant name "master" is not allowed.`)
+	if tenant.Name == "Master" {
+		return errors.New(`Tenant name "Master" is not allowed.`)
 	}
 
-	err := EnsureSchema(tenant.Subdomain, tx)
+	tx, err := Use(MASTER, tx)
 	if err != nil {
 		return err
 	}
 
-	tx, err = Use("master", tx)
+	tenantID, err := Insert(tenant, "Tenants", tx)
 	if err != nil {
 		return err
 	}
 
-	t, err := json.Marshal(tenant)
+	tenantName := "Tenant" + string(tenantID)
+	err = EnsureSchema(tenantName, tx)
 	if err != nil {
 		return err
 	}
 
-	_, err = tx.Exec(`INSERT INTO tenants (doc) VALUES ($1)`, t)
-	if err != nil {
-		return err
-	}
-
-	tx, err = Use(tenant.Subdomain, tx)
+	tx, err = Use(tenantID, tx)
 	if err != nil {
 		return err
 	}
@@ -88,5 +100,23 @@ func EnsureTenant(tenant *Tenant, tenantInit func(tx *sql.Tx) error, tx *sql.Tx)
 		return err
 	}
 
+	return nil
+}
+
+func DropTenant(tenantID int, tx *sql.Tx) error {
+	tx, err := Use(MASTER, tx)
+	if err != nil {
+		return err
+	}
+
+	err = Delete(tenantID, "Tenants", tx)
+	if err != nil {
+		return err
+	}
+
+	_, err = tx.Exec("DROP SCHEMA Tenant" + string(tenantID))
+	if err != nil {
+		return err
+	}
 	return nil
 }

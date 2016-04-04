@@ -17,11 +17,3 @@ func Open(connectionURL string) (*sql.DB, error) {
 	}
 	return DB, err
 }
-
-func Use(schemaName string, tx *sql.Tx) (*sql.Tx, error) {
-	_, err := tx.Exec("SET search_path = " + schemaName)
-	if err != nil {
-		return nil, err
-	}
-	return tx, nil
-}
