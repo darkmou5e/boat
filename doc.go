@@ -1,7 +1,7 @@
 /*
 
-- All funcitons that working with an already started transaction panics if
-  something goes wrong. Use a wrapper funciton "DontPanic" (will be implemented soon)
+- All functions that working with an already started transaction panics if
+  something goes wrong. Use a wrapper function "DontPanic" (will be implemented soon)
   to catch it. Also use "defer tx.Recover()"" after start a new transaction and
   tx.Commit() imediately after a transaction related code.
 
