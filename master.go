@@ -3,6 +3,7 @@ package boat
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 )
 
 // Tenant is data struct for doc in master table.
@@ -14,109 +15,72 @@ type Tenant struct {
 
 const MASTER = -1
 
-func Use(tenantID int, tx *sql.Tx) (*sql.Tx, error) {
+func Use(tenantId int, tx *sql.Tx) {
 	var schemaName string
-	if tenantID == MASTER {
-		schemaName = "Master"
+	if tenantId == MASTER {
+		schemaName = "master"
 	} else {
-		schemaName = "Tenant" + string(tenantID)
+		schemaName = "tenant_" + string(tenantId)
 	}
 
 	_, err := tx.Exec("SET search_path = " + schemaName)
 	if err != nil {
-		return nil, err
+		panic(fmt.Errorf("Can't switch default schema to '%s': %s", schemaName, err))
 	}
-	return tx, nil
 }
 
+// It must return error or panics as all other?..
 func Bootstrap(db *sql.DB) error {
 	tx, err := db.Begin()
-
 	if err != nil {
 		return err
 	}
+	defer tx.Rollback()
 
-	defer func() {
-		if err != nil {
-			tx.Rollback()
-			return
-		}
-		tx.Commit()
-	}()
+	EnsureSchema("master", tx)
+	Use(MASTER, tx)
+	EnsureCollection("tenants", tx)
+	EnsureGINIndex("tenants", tx)
 
-	err = EnsureSchema("Master", tx)
-
-	if err != nil {
-		return err
-	}
-
-	tx, err = Use(MASTER, tx)
-
-	if err != nil {
-		return err
-	}
-
-	err = EnsureCollection("Tenants", tx)
-	if err != nil {
-		return err
-	}
-
-	err = EnsureGINIndex("Tenants", tx)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return tx.Commit()
 }
 
-func EnsureTenant(tenant *Tenant, tenantInit func(tx *sql.Tx) error, tx *sql.Tx) error {
-	if tenant.Name == "Master" {
-		return errors.New(`Tenant name "Master" is not allowed.`)
+func EnsureTenant(tenant *Tenant, tenantInit func(tx *sql.Tx), tx *sql.Tx) {
+	if tenant.Name == "master" {
+		panic(errors.New("Tenant name 'master' is not allowed."))
 	}
 
-	tx, err := Use(MASTER, tx)
-	if err != nil {
-		return err
-	}
-
-	tenantID, err := Insert(tenant, "Tenants", tx)
-	if err != nil {
-		return err
-	}
-
-	tenantName := "Tenant" + string(tenantID)
-	err = EnsureSchema(tenantName, tx)
-	if err != nil {
-		return err
-	}
-
-	tx, err = Use(tenantID, tx)
-	if err != nil {
-		return err
-	}
-
-	err = tenantInit(tx)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	Use(MASTER, tx)
+	tenantId := Insert(tenant, "tenants", tx)
+	tenantName := "tenant_" + string(tenantId)
+	EnsureSchema(tenantName, tx)
+	Use(tenantId, tx)
+	tenantInit(tx)
 }
 
-func DropTenant(tenantID int, tx *sql.Tx) error {
-	tx, err := Use(MASTER, tx)
+func DropTenant(tenantId int, tx *sql.Tx) {
+	Use(MASTER, tx)
+	Delete(tenantId, "tenants", tx)
+
+	_, err := tx.Exec("DROP SCHEMA IF EXISTS tenant_" + string(tenantId) + " CASCADE")
 	if err != nil {
-		return err
+		panic(fmt.Errorf("Can't drop tenant with id '%d': %s", tenantId, err))
+	}
+}
+
+func FindTenantByName(tenantName string, tenant *Tenant, tx *sql.Tx) (tenantId int, found bool) {
+	Use(MASTER, tx)
+
+	rows := Select("tenants", tx, `WHERE doc @> '{"Name":"$1"}'`, tenantName)
+	defer rows.Close()
+	empty := true
+	for rows.Next() {
+		empty = false
+		rows.Scan(&tenantId, tenant)
 	}
 
-	err = Delete(tenantID, "Tenants", tx)
-	if err != nil {
-		return err
+	if empty {
+		return 0, false
 	}
-
-	_, err = tx.Exec("DROP SCHEMA Tenant" + string(tenantID))
-	if err != nil {
-		return err
-	}
-	return nil
+	return tenantId, true
 }
