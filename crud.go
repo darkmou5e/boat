@@ -56,7 +56,7 @@ func Find(docId int, collection string, doc interface{}, tx *sql.Tx) (found bool
 		panic(fmt.Errorf("Can't select the doc with id '%d' in the collection '%s': %s", docId, collection, err))
 	}
 
-	err = json.Unmarshal(d, doc)
+	err = json.Unmarshal(d, &doc)
 	if err != nil {
 		panic(fmt.Errorf("Can't unmarshal to struct '%+v' the json '%s': %s", doc, string(d), err))
 	}

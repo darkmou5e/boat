@@ -9,7 +9,6 @@ import (
 // not exist.
 func EnsureSchema(name string, tx *sql.Tx) {
 	queryText := fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS %s`, name)
-
 	_, err := tx.Exec(queryText)
 	if err != nil {
 		panic(fmt.Errorf("Can't create new schema '%s': %s", name, err))

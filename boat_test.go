@@ -29,12 +29,17 @@ func removeExistingTenants(t *testing.T, tx *sql.Tx) {
 	Use(MASTER, tx)
 
 	rows := Select("tenants", tx, "")
-	defer rows.Close()
 	var id int
 	var tenant Tenant
+	var tenantsIds []int
 	for rows.Next() {
 		rows.Scan(&id, &tenant)
-		DropTenant(id, tx)
+		tenantsIds = append(tenantsIds, id)
+	}
+	rows.Close()
+
+	for _, tid := range tenantsIds {
+		DropTenant(tid, tx)
 	}
 }
 
@@ -46,18 +51,27 @@ func testCRUD(tenantId int, t *testing.T, tx *sql.Tx) {
 	msgId := Insert(msg, "messages", tx)
 
 	var msgFound message
-	found := Find(msgId, "messages", msgFound, tx)
+	found := Find(msgId, "messages", &msgFound, tx)
 
 	if !found {
-		t.Fatalf("Doc with id '%d' not found in collection, but it must be there: %s", msgId)
+		t.Fatalf("Doc with id '%d' not found in collection after insert, but it must be there", msgId)
 	}
 
 	if msg != msgFound {
-		t.Fatalf("One doc inserted and gotten from a collection must be the same Inserted = %s; Gotten = %s: %s", msg, msgFound)
+		t.Fatalf("One doc inserted and gotten from a collection must be the same Inserted = %s; Gotten = %s", msg, msgFound)
 	}
 
-	// Update ..
+	msg.Title = "Updated"
+	Update(msg, msgId, "messages", tx)
 
+	found = Find(msgId, "messages", &msgFound, tx)
+	if !found {
+		t.Fatalf("Doc with id '%d' not found in collection after update, but it must be there", msgId)
+	}
+
+	if msg != msgFound {
+		t.Fatalf("One doc updated and gotten from a collection must be the same Updated = %s; Gotten = %s", msg, msgFound)
+	}
 }
 
 func createTestTenants(t *testing.T, tx *sql.Tx) (tenantId int) {
@@ -95,5 +109,4 @@ func TestBoat(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Can't commit transaction: %s", err)
 	}
-	//  Update Delete Find Select
 }

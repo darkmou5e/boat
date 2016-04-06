@@ -20,7 +20,7 @@ func Use(tenantId int, tx *sql.Tx) {
 	if tenantId == MASTER {
 		schemaName = "master"
 	} else {
-		schemaName = "tenant_" + string(tenantId)
+		schemaName = fmt.Sprintf("tenant_%d", tenantId)
 	}
 
 	_, err := tx.Exec("SET search_path = " + schemaName)
@@ -52,7 +52,7 @@ func EnsureTenant(tenant *Tenant, tenantInit func(tx *sql.Tx), tx *sql.Tx) {
 
 	Use(MASTER, tx)
 	tenantId := Insert(tenant, "tenants", tx)
-	tenantName := "tenant_" + string(tenantId)
+	tenantName := fmt.Sprintf("tenant_%d", tenantId)
 	EnsureSchema(tenantName, tx)
 	Use(tenantId, tx)
 	tenantInit(tx)
@@ -62,7 +62,7 @@ func DropTenant(tenantId int, tx *sql.Tx) {
 	Use(MASTER, tx)
 	Delete(tenantId, "tenants", tx)
 
-	_, err := tx.Exec("DROP SCHEMA IF EXISTS tenant_" + string(tenantId) + " CASCADE")
+	_, err := tx.Exec(fmt.Sprintf("DROP SCHEMA IF EXISTS tenant_%d CASCADE", tenantId))
 	if err != nil {
 		panic(fmt.Errorf("Can't drop tenant with id '%d': %s", tenantId, err))
 	}
@@ -70,14 +70,14 @@ func DropTenant(tenantId int, tx *sql.Tx) {
 
 func FindTenantByName(tenantName string, tenant *Tenant, tx *sql.Tx) (tenantId int, found bool) {
 	Use(MASTER, tx)
+	rows := Select("tenants", tx, `WHERE doc->>'Name' = $1 LIMIT 1`, tenantName)
 
-	rows := Select("tenants", tx, `WHERE doc @> '{"Name":"$1"}'`, tenantName)
-	defer rows.Close()
 	empty := true
 	for rows.Next() {
 		empty = false
 		rows.Scan(&tenantId, tenant)
 	}
+	rows.Close()
 
 	if empty {
 		return 0, false
